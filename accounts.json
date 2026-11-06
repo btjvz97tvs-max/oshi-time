@@ -1,6 +1,6 @@
 {
 "note": "推しタイムを使えるアカウント。アプリの「アカウントを申請する」で作った申請コードを、下の accounts の中に1行ずつ足すと、その人がログインできるようになります。行を消すと、その人はもう使えなくなります。アカウントが1つもないあいだは、誰でも使えます。",
 "accounts": [
-{"name": "yuto", "salt": "tMFvNy_Bot3_xoE07dPezw", "hash": "xmfY-23p9bGLj92VAZJqnNvSc6l-AV4Da_mr7Fv8hv0"}
+{"name": "yuto", "v": 2, "m": 131072, "t": 4, "p": 1, "salt": "Zmq8vqA6yxejwuDLS0_tfw", "check": "vA53xdkUqE9mNwQSzej2K_HW9aGsML1tq3V7OA2wrnw"}
 ]
 }
