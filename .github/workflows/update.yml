@@ -1,0 +1,59 @@
+name: 推しデータを更新して公開
+
+on:
+  schedule:
+    - cron: '2,17,32,47 * * * *'   # 15分ごと（GitHubの混み具合で数分〜十数分遅れることがあります）
+  workflow_dispatch:          # Actions画面の「Run workflow」で今すぐ更新
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: oshi-time-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: にじさんじのデータを取得
+        env:
+          HOLODEX_API_KEY: ${{ secrets.HOLODEX_API_KEY }}
+        run: node scripts/fetch-data.mjs
+
+      # 60日間なにも更新が無いと自動実行が止まるので、週に1回だけ小さな記録を残す
+      - name: 自動更新を止めないための記録
+        run: |
+          last=$(git log -1 --format=%ct)
+          now=$(date +%s)
+          if [ $((now - last)) -gt 604800 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            date -u > .keepalive
+            git add .keepalive
+            git commit -m "自動更新の維持"
+            git pull --rebase
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

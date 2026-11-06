@@ -1,0 +1,1033 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>推しタイム</title>
+<meta name="description" content="にじさんじの推しの配信予定・新着・締切をひとつにまとめる非公式ファンアプリ">
+<meta name="theme-color" content="#F6F5FB" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16151F" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="推しタイム">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F6F5FB;
+  --surface: #FFFFFF;
+  --ink: #22213A;
+  --muted: #6D6A86;
+  --line: #E4E2EE;
+  --live: #E62A63;
+  --live-soft: #FDE6EE;
+  --due: #A86A00;
+  --due-soft: #FCF0D8;
+  --accent: #4B3FD1;
+  --accent-soft: #ECEAFD;
+  --on-accent: #FFFFFF;
+  --on-live: #FFFFFF;
+  --round: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  --body: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", sans-serif;
+  --tabbar: calc(64px + env(safe-area-inset-bottom, 0px));
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16151F; --surface: #201F2C; --ink: #EDECF6; --muted: #A3A0BA; --line: #33313F;
+    --live: #FF5A8A; --live-soft: #3A1B27; --due: #F0B046; --due-soft: #3A2D14;
+    --accent: #ADA4FF; --accent-soft: #2A2747; --on-accent: #16151F; --on-live: #16151F;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #16151F; --surface: #201F2C; --ink: #EDECF6; --muted: #A3A0BA; --line: #33313F;
+  --live: #FF5A8A; --live-soft: #3A1B27; --due: #F0B046; --due-soft: #3A2D14;
+  --accent: #ADA4FF; --accent-soft: #2A2747; --on-accent: #16151F; --on-live: #16151F;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.6 var(--body);
+  padding-bottom: calc(var(--tabbar) + 24px);
+}
+a { color: inherit; }
+button, input, select { font: inherit; color: inherit; }
+img { display: block; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+[hidden] { display: none !important; }
+
+.wrap {
+  max-width: 560px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ヘッダー */
+.top {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding-top: calc(env(safe-area-inset-top) + 18px); padding-bottom: 6px;
+}
+.brand { margin: 0; font: 800 26px/1.2 var(--round); letter-spacing: .02em; }
+.updated { margin: 0; color: var(--muted); font-size: 12px; text-align: right; }
+
+/* 推しだけ / 全員 切り替え */
+.scope {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  margin: 10px 0 4px; padding: 4px; background: var(--line); border-radius: 12px;
+}
+.scope button {
+  border: 0; background: transparent; padding: 8px 0; border-radius: 9px; cursor: pointer;
+  font-weight: 700; font-size: 14px; color: var(--muted);
+}
+.scope button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
+
+h2.sec {
+  display: flex; align-items: center; gap: 8px;
+  margin: 26px 0 10px; font: 800 17px/1.3 var(--round);
+}
+h2.sec .count { color: var(--muted); font: 500 13px var(--body); }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--live); }
+@media (prefers-reduced-motion: no-preference) {
+  .dot { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+}
+
+/* アバター */
+.av {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
+  background: var(--line); display: grid; place-items: center;
+  font: 800 16px var(--round); color: #fff;
+}
+.av.lg { width: 72px; height: 72px; font-size: 28px; }
+.av.sm { width: 28px; height: 28px; font-size: 12px; }
+
+/* いま配信中のライバー：顔のまわりに赤い枠と「配信中」 */
+.av.on-air { box-shadow: 0 0 0 2px var(--bg), 0 0 0 5px var(--live); }
+.av.lg.on-air { box-shadow: 0 0 0 3px var(--bg), 0 0 0 7px var(--live); }
+.onair-tag {
+  display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 5px; vertical-align: 2px;
+  background: var(--live); color: var(--on-live); font: 700 11px/1.6 var(--body); white-space: nowrap;
+}
+.chip.on-air { box-shadow: inset 0 0 0 2px var(--live); }
+
+/* いま配信中 */
+.live-strip {
+  display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
+  margin: 0 -16px; padding: 2px 16px 6px; scrollbar-width: none;
+}
+.live-strip::-webkit-scrollbar { display: none; }
+.live-card {
+  flex: none; width: 132px; scroll-snap-align: start; text-decoration: none;
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+}
+.ring { padding: 3px; border-radius: 50%; background: var(--live); }
+.ring .av { width: 64px; height: 64px; border: 3px solid var(--bg); font-size: 24px; }
+.live-name { font-weight: 700; font-size: 13px; line-height: 1.3; }
+.live-title {
+  font-size: 12px; line-height: 1.4; color: var(--muted);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.viewers { font-size: 11px; color: var(--live); font-weight: 700; }
+
+/* 番組表 */
+.day { margin: 14px 0 4px; font: 700 13px var(--round); color: var(--muted); }
+.list { list-style: none; margin: 0; padding: 0; }
+.slot a, .vid a {
+  display: flex; gap: 12px; align-items: flex-start; text-decoration: none;
+  padding: 10px 0; border-bottom: 1px solid var(--line);
+}
+.slot-time {
+  flex: none; width: 58px; padding-top: 6px;
+  font: 800 19px/1 var(--round); font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+}
+.slot-time.soon { color: var(--live); font-size: 14px; padding-top: 9px; }
+.body { min-width: 0; flex: 1; }
+.who { font-weight: 700; font-size: 13px; line-height: 1.4; }
+.ttl {
+  font-size: 14px; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.meta { margin-top: 2px; font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
+.tag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); }
+
+/* 新着動画 */
+.thumb {
+  flex: none; width: 116px; aspect-ratio: 16/9; border-radius: 8px; object-fit: cover; background: var(--line);
+}
+
+/* 今日やること */
+.todo { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.todo li {
+  display: flex; gap: 12px; align-items: center;
+  padding: 12px 14px; border-radius: 12px; background: var(--due-soft);
+}
+.left {
+  flex: none; min-width: 64px; text-align: center;
+  font: 800 14px/1.2 var(--round); color: var(--due);
+}
+.left.over { color: var(--muted); }
+
+.more {
+  display: block; width: 100%; margin-top: 10px; padding: 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: transparent; cursor: pointer; font-weight: 700; color: var(--accent);
+}
+.note { color: var(--muted); font-size: 14px; margin: 8px 0; }
+.empty {
+  margin: 28px 0; padding: 28px 20px; border-radius: 16px; background: var(--surface); text-align: center;
+}
+.empty p { margin: 0 0 14px; }
+.btn {
+  display: inline-block; border: 0; border-radius: 10px; padding: 10px 18px; cursor: pointer;
+  background: var(--accent); color: var(--on-accent); font-weight: 700; text-decoration: none;
+}
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+.pill {
+  flex: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px;
+  font-size: 13px; font-weight: 700; color: var(--accent); text-decoration: none;
+}
+
+/* 推しを探す */
+.search {
+  position: sticky; top: 0; z-index: 5; background: var(--bg);
+  padding: calc(env(safe-area-inset-top) + 10px) 0 10px; margin-top: 4px;
+}
+.search input {
+  width: 100%; padding: 12px 14px 12px 40px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%236D6A86' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6'/%3E%3Cpath d='m13 13 4 4'/%3E%3C/svg%3E") 14px center no-repeat;
+  font-size: 16px; -webkit-appearance: none; appearance: none;
+}
+.chips { display: flex; gap: 8px; overflow-x: auto; margin: 4px -16px 0; padding: 2px 16px 8px; scrollbar-width: none; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 4px;
+  border-radius: 999px; background: var(--accent-soft); border: 0; cursor: pointer; font-size: 13px; font-weight: 700;
+}
+.liver { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+.liver .open {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px 0;
+  border: 0; background: none; text-align: left; cursor: pointer;
+}
+.liver .nm { display: block; font-weight: 700; line-height: 1.35; }
+.liver .sub { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fav {
+  flex: none; border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-weight: 700;
+  border: 1px solid var(--accent); background: transparent; color: var(--accent);
+}
+.fav[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+
+/* 締切 */
+form.dl { display: grid; gap: 12px; padding: 16px; border-radius: 16px; background: var(--surface); margin-top: 16px; }
+form.dl label { display: grid; gap: 4px; font-size: 13px; font-weight: 700; color: var(--muted); }
+form.dl input, form.dl select {
+  width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg);
+  font-size: 16px; font-weight: 400; color: var(--ink); min-height: 44px;
+}
+.dl-item { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.dl-head { display: flex; gap: 12px; align-items: baseline; }
+.dl-head .left { width: 88px; min-width: 0; text-align: left; }
+.dl-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.dl-actions button, .dl-actions a {
+  border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 6px 10px;
+  font-size: 13px; cursor: pointer; text-decoration: none;
+}
+details.past { margin-top: 18px; color: var(--muted); }
+details.past summary { cursor: pointer; font-weight: 700; }
+
+/* 詳細シート */
+dialog.sheet {
+  width: 100%; max-width: 560px; max-height: 88vh; margin: auto auto 0; padding: 0;
+  border: 0; border-radius: 20px 20px 0 0; background: var(--bg); color: var(--ink);
+}
+dialog.sheet::backdrop { background: rgb(10 10 20 / .45); }
+.sheet-in { padding: 18px 16px calc(env(safe-area-inset-bottom) + 24px); }
+.sheet-head { display: flex; gap: 14px; align-items: center; }
+.sheet-head h3 { margin: 0; font: 800 20px/1.3 var(--round); }
+.sheet-acts { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 4px; }
+.close {
+  position: sticky; top: 0; float: right; border: 0; background: var(--line); border-radius: 999px;
+  padding: 4px 12px; cursor: pointer; font-size: 13px; font-weight: 700;
+}
+
+/* 下のタブ */
+nav.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  height: var(--tabbar); padding-bottom: env(safe-area-inset-bottom);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line);
+}
+nav.tabs a {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  text-decoration: none; font-size: 11px; font-weight: 700; color: var(--muted);
+}
+nav.tabs a[aria-current="page"] { color: var(--accent); }
+nav.tabs svg { width: 24px; height: 24px; }
+
+footer.credit { margin: 36px 0 0; font-size: 12px; color: var(--muted); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section id="view-home" aria-labelledby="brand">
+    <header class="top">
+      <h1 class="brand" id="brand">推しタイム</h1>
+      <p class="updated" id="updated"></p>
+    </header>
+    <div class="scope" role="group" aria-label="表示するライバー">
+      <button type="button" data-scope="fav">推しだけ</button>
+      <button type="button" data-scope="all">にじさんじ全員</button>
+    </div>
+    <div id="home-body"></div>
+  </section>
+
+  <section id="view-search" hidden aria-label="推しを探す">
+    <div class="search">
+      <input id="q" type="search" placeholder="名前で探す（ひらがな・英語でもOK）" autocomplete="off" enterkeyhint="search" aria-label="ライバーの名前">
+    </div>
+    <div id="fav-chips"></div>
+    <p class="note" id="result-count"></p>
+    <ul class="list" id="results"></ul>
+    <footer class="credit"><p class="sync-note"></p>非公式のファンアプリです。ライバーの名簿は2026年11月時点の公開情報をもとに作成し、配信データは <a href="https://holodex.net" target="_blank" rel="noopener">Holodex</a> から取得しています。</footer>
+  </section>
+
+  <section id="view-deadlines" hidden aria-labelledby="dl-title">
+    <header class="top"><h1 class="brand" id="dl-title">締切</h1></header>
+    <form class="dl" id="dl-form">
+      <label>内容<input name="title" required maxlength="80" placeholder="例：ワンマンライブ 先行抽選の申込"></label>
+      <label>締切の日時<input name="due" type="datetime-local" required></label>
+      <label>推し（なくてもOK）<select name="ch" id="dl-ch"></select></label>
+      <label>リンク（なくてもOK）<input name="url" type="url" inputmode="url" placeholder="https://"></label>
+      <button class="btn" type="submit">締切を追加</button>
+    </form>
+    <h2 class="sec">これからの締切</h2>
+    <ul class="list" id="dl-list"></ul>
+    <details class="past" id="dl-past-wrap" hidden><summary>過ぎた締切</summary><ul class="list" id="dl-past"></ul></details>
+    <footer class="credit"><p class="sync-note"></p></footer>
+  </section>
+
+</div>
+
+<nav class="tabs" aria-label="メニュー">
+  <a href="#home" data-tab="home">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    ホーム
+  </a>
+  <a href="#search" data-tab="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg>
+    推しを探す
+  </a>
+  <a href="#deadlines" data-tab="deadlines">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+    締切
+  </a>
+</nav>
+
+<dialog class="sheet" id="sheet"><div class="sheet-in" id="sheet-in"></div></dialog>
+
+<script>
+'use strict';
+document.documentElement.lang = 'ja';
+const $ = (s, el = document) => el.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+const state = {
+  data: null,
+  roster: store.get('oshi.roster', null),
+  offline: false,
+  livers: new Map(),
+  byCh: new Map(),
+  favs: new Set(store.get('oshi.favs', [])),
+  deadlines: store.get('oshi.deadlines', []),
+  scope: store.get('oshi.scope', 'fav'),
+  recentLimit: 12,
+};
+
+/* ---------- 文字まわり ---------- */
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const toKata = (s) => s.replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+const toHira = (s) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+const normJa = (s) => toKata(String(s || '').normalize('NFKC').toLowerCase().replace(/[\s・･.。、,'’"_\-‐ー〜~]/g, ''));
+
+const KANA = {あ:'a',い:'i',う:'u',え:'e',お:'o',か:'ka',き:'ki',く:'ku',け:'ke',こ:'ko',さ:'sa',し:'shi',す:'su',せ:'se',そ:'so',た:'ta',ち:'chi',つ:'tsu',て:'te',と:'to',な:'na',に:'ni',ぬ:'nu',ね:'ne',の:'no',は:'ha',ひ:'hi',ふ:'fu',へ:'he',ほ:'ho',ま:'ma',み:'mi',む:'mu',め:'me',も:'mo',や:'ya',ゆ:'yu',よ:'yo',ら:'ra',り:'ri',る:'ru',れ:'re',ろ:'ro',わ:'wa',を:'o',ん:'n',が:'ga',ぎ:'gi',ぐ:'gu',げ:'ge',ご:'go',ざ:'za',じ:'ji',ず:'zu',ぜ:'ze',ぞ:'zo',だ:'da',ぢ:'ji',づ:'zu',で:'de',ど:'do',ば:'ba',び:'bi',ぶ:'bu',べ:'be',ぼ:'bo',ぱ:'pa',ぴ:'pi',ぷ:'pu',ぺ:'pe',ぽ:'po',ぁ:'a',ぃ:'i',ぅ:'u',ぇ:'e',ぉ:'o',ゃ:'ya',ゅ:'yu',ょ:'yo',ゎ:'wa',ゔ:'vu',ゐ:'i',ゑ:'e'};
+const SMALL_Y = 'ゃゅょ', SMALL_V = 'ぁぃぅぇぉ';
+
+// ひらがな・カタカナをローマ字にする（英語名との照合用）
+function toRomaji(input) {
+  const s = toHira(String(input).normalize('NFKC').toLowerCase());
+  let out = '', dbl = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i], n = s[i + 1];
+    if (c === 'っ') { dbl = true; continue; }
+    if (c === 'ー') continue;
+    let r = KANA[c];
+    if (r === undefined) { out += c; dbl = false; continue; }
+    if (n && SMALL_Y.includes(n) && r.endsWith('i') && r.length > 1) {
+      const base = r.slice(0, -1), v = KANA[n].slice(1);
+      r = /(sh|ch|j)$/.test(base) ? base + v : base + 'y' + v; i++;
+    } else if (n && SMALL_V.includes(n)) {
+      const base = c === 'う' ? 'w' : r.replace(/[aiueo]$/, '');
+      if (base) { r = base + KANA[n]; i++; }
+    }
+    if (dbl) { r = r.startsWith('ch') ? 't' + r : r[0] + r; dbl = false; }
+    out += r;
+  }
+  return out;
+}
+
+// 表記ゆれ（shi/si、l/r、長音など）をそろえて比べやすくする
+function canon(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z]/g, '')
+    .replace(/tsu/g, 'tu').replace(/shi/g, 'si').replace(/chi/g, 'ti')
+    .replace(/sh/g, 'sy').replace(/ch/g, 'ty').replace(/fu/g, 'hu')
+    .replace(/ji/g, 'zi').replace(/j/g, 'zy')
+    .replace(/l/g, 'r').replace(/v/g, 'b')
+    .replace(/m(?=[bp])/g, 'n')
+    .replace(/([a-z])\1+/g, '$1')
+    .replace(/ou/g, 'o').replace(/([aeiou])h(?![aeiouy])/g, '$1');
+}
+
+// 子音だけの骨組み。「ゔぉっくす」→ bks、「Vox」→ bks のように、カタカナ読みと英語名を突き合わせる
+function skel(s) {
+  return canon(s).replace(/[cq]/g, 'k').replace(/x/g, 'ks').replace(/f/g, 'h')
+    .replace(/[aeiouyhw]/g, '').replace(/(.)\1+/g, '$1');
+}
+// 名簿の人を先に（公式チャンネルなど名簿外のものは最後）、その中で登録者が多い順→デビュー順
+const byDefault = (a, b) => ((a.order >= 1e5) - (b.order >= 1e5)) || (b.subs - a.subs) || (a.order - b.order);
+
+function searchLivers(q) {
+  const all = [...state.livers.values()];
+  const query = q.trim();
+  if (!query) return all.sort(byDefault);
+  const qj = normJa(query);
+  const qr = canon(toRomaji(query));
+  const qs = skel(toRomaji(query));
+  const hits = [];
+  for (const l of all) {
+    let score = 0;
+    if (qj) for (const n of l._ja) if (n.includes(qj)) score = Math.max(score, n.startsWith(qj) ? 4 : 3);
+    if (!score && qr.length >= 2) for (const w of l._en) if (w.includes(qr)) score = Math.max(score, w.startsWith(qr) ? 2 : 1);
+    if (!score && l.branch === 'EN' && qs.length >= 2 && l._sk.some((w) => w.startsWith(qs))) score = 0.8;
+    if (!score && qj && l._group.includes(qj)) score = 0.5;
+    if (score) hits.push([score, l]);
+  }
+  return hits.sort((a, b) => b[0] - a[0] || byDefault(a[1], b[1])).map((h) => h[1]);
+}
+
+/* ---------- 日時 ---------- */
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+const pad = (n) => String(n).padStart(2, '0');
+const hm = (d) => `${d.getHours()}:${pad(d.getMinutes())}`;
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+function dayLabel(d) {
+  const diff = Math.round((startOfDay(d) - startOfDay(new Date())) / 864e5);
+  const md = `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]})`;
+  if (diff === 0) return `今日 ${md}`;
+  if (diff === 1) return `明日 ${md}`;
+  if (diff === -1) return `昨日 ${md}`;
+  return md;
+}
+function ago(d) {
+  const m = Math.round((Date.now() - d) / 6e4);
+  if (m < 1) return 'たった今';
+  if (m < 60) return `${m}分前`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}時間前`;
+  return `${Math.round(h / 24)}日前`;
+}
+function left(ms) {
+  if (ms <= 0) return { text: '締切済み', over: true };
+  const m = Math.floor(ms / 6e4);
+  if (m < 60) return { text: `あと${m}分` };
+  const h = Math.floor(m / 60);
+  if (h < 48) return { text: `あと${h}時間` };
+  return { text: `あと${Math.floor(h / 24)}日` };
+}
+function dur(sec) {
+  if (!sec) return '';
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+const fmtDue = (d) => `${d.getMonth() + 1}/${d.getDate()}(${WD[d.getDay()]}) ${hm(d)}`;
+const fmtSubs = (n) => n >= 1e4 ? `${(n / 1e4).toFixed(n >= 1e5 ? 0 : 1)}万人` : `${n.toLocaleString()}人`;
+
+/* ---------- 部品 ---------- */
+function hue(str) { let h = 0; for (const c of str) h = (h * 31 + c.codePointAt(0)) % 360; return h; }
+// 配信データが2時間以上古いときは、配信中の印を出さない
+const isLive = (l) => !!l && !!state.liveIds?.has(l.id);
+const onAirTag = (l) => (isLive(l) ? '<span class="onair-tag">配信中</span>' : '');
+const liveFirst = (list) => [...list].sort((a, b) => isLive(b) - isLive(a));
+function avatar(l, size = '', ring = isLive(l)) {
+  const cls = `av ${size}${ring ? ' on-air' : ''}`.trim();
+  if (l?.photo) return `<img class="${cls}" src="${esc(l.photo)}" alt="" loading="lazy" referrerpolicy="no-referrer">`;
+  const name = l?.name || '?';
+  return `<span class="${cls}" style="background:hsl(${hue(name)} 45% 55%)" aria-hidden="true">${esc([...name][0])}</span>`;
+}
+const liverOf = (ch) => state.byCh.get(ch) || state.livers.get(ch) || { id: ch, name: 'チャンネル', en: '', photo: '' };
+const keyOfCh = (ch) => state.byCh.get(ch)?.id || ch;
+const ytVideo = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+// YouTubeチャンネルへのリンク（チャンネルID → ハンドル(@名前) の順に使い、どちらも無ければ検索）
+const hasYt = (l) => !!(l.ch || l.yh);
+const ytLink = (l) => l.ch
+  ? `https://www.youtube.com/channel/${encodeURIComponent(l.ch)}`
+  : l.yh
+    ? `https://www.youtube.com/@${encodeURIComponent(l.yh)}`
+    : `https://www.youtube.com/results?search_query=${encodeURIComponent(`${l.name} にじさんじ`)}`;
+// チャンネルの「ライブ」タブ（配信予定・アーカイブ）や「動画」タブ
+const ytTab = (l, tab) => (hasYt(l) ? `${ytLink(l)}/${tab}` : ytLink(l));
+// 名前の下に出す補足（ENの人はカタカナ表記、それ以外は英語表記）
+const subName = (l) => {
+  const s = (l.branch === 'EN' ? l.aka?.[0] : l.en) || '';
+  return s === l.name ? '' : s;
+};
+function tags(v) {
+  const t = [];
+  if (v.topic === 'membersonly') t.push('<span class="tag">メン限</span>');
+  else if (v.topic === 'singing') t.push('<span class="tag">歌</span>');
+  return t.join('');
+}
+
+function slotRow(v) {
+  const l = liverOf(v.ch), d = new Date(v.start);
+  const onAir = v.status === 'live', late = !onAir && d < Date.now();
+  const label = onAir ? '配信中' : late ? 'まもなく' : hm(d);
+  return `<li class="slot"><a href="${ytVideo(v.id)}" target="_blank" rel="noopener">
+    <time class="slot-time${onAir || late ? ' soon' : ''}" datetime="${esc(v.start)}">${label}</time>
+    ${avatar(l)}
+    <span class="body"><span class="who">${esc(l.name)}</span><span class="ttl">${esc(v.title)}</span>${tags(v) ? `<span class="meta">${tags(v)}</span>` : ''}</span>
+  </a></li>`;
+}
+function vidRow(v, showName = true) {
+  const l = liverOf(v.ch), d = new Date(v.start);
+  return `<li class="vid"><a href="${ytVideo(v.id)}" target="_blank" rel="noopener">
+    <img class="thumb" src="https://i.ytimg.com/vi/${encodeURIComponent(v.id)}/mqdefault.jpg" alt="" loading="lazy">
+    <span class="body">${showName ? `<span class="who">${esc(l.name)}</span>` : ''}<span class="ttl">${esc(v.title)}</span>
+    <span class="meta"><span>${ago(d)}</span>${v.dur ? `<span>${dur(v.dur)}</span>` : ''}${tags(v)}</span></span>
+  </a></li>`;
+}
+function liveCard(v) {
+  const l = liverOf(v.ch);
+  return `<a class="live-card" href="${ytVideo(v.id)}" target="_blank" rel="noopener">
+    <span class="ring">${avatar(l, '', false)}</span>
+    <span class="live-name">${esc(l.name)}</span>
+    <span class="live-title">${esc(v.title)}</span>
+    ${v.viewers ? `<span class="viewers">${Number(v.viewers).toLocaleString()}人が視聴中</span>` : ''}
+  </a>`;
+}
+function upcomingByDay(list) {
+  let html = '', last = '';
+  for (const v of list) {
+    const lab = dayLabel(new Date(v.start));
+    if (lab !== last) { if (last) html += '</ul>'; html += `<p class="day">${lab}</p><ul class="list">`; last = lab; }
+    html += slotRow(v);
+  }
+  return last ? html + '</ul>' : '';
+}
+
+/* ---------- データ ---------- */
+function videosFor(filterFn) {
+  const vids = state.data?.videos || [];
+  const now = Date.now();
+  const live = vids.filter((v) => v.status === 'live' && filterFn(v)).sort((a, b) => (b.viewers || 0) - (a.viewers || 0));
+  const upcoming = vids.filter((v) => v.status === 'upcoming' && filterFn(v) && new Date(v.start) > now - 2 * 3600e3)
+    .sort((a, b) => new Date(a.start) - new Date(b.start));
+  const recent = vids.filter((v) => v.status === 'past' && filterFn(v))
+    .sort((a, b) => new Date(b.start) - new Date(a.start));
+  return { live, upcoming, recent };
+}
+
+// チャンネル名の飾り（【にじさんじ】や Channel など）を外す
+const stripNoise = (s) => String(s || '')
+  .replace(/【[^】]*】|\[[^\]]*\]|\([^)]*\)|（[^）]*）/g, ' ')
+  .replace(/\b(channel|ch)\b\.?|にじさんじ|nijisanji(\s*en)?/gi, ' ')
+  .split(/[\/／|｜]/)[0];
+const enKey = (s) => String(s || '').normalize('NFKC').toLowerCase().replace(/[^a-z0-9]+/g, ' ')
+  .split(' ').filter(Boolean).map(canon).filter(Boolean).sort().join(' ');
+
+// 名簿（livers.json）と、自動更新で集めたチャンネル情報（data.json）をひとつにまとめる
+function buildLivers() {
+  const map = new Map(), byCh = new Map(), byJa = new Map(), byEn = new Map();
+  (state.roster?.livers || []).forEach((r, i) => {
+    const l = {
+      id: `r:${r.n}`, ch: r.yt || '', yh: r.yh || '', name: r.n, kana: r.k || '', en: r.e || '', aka: r.a || [],
+      group: r.g || '', branch: r.b || 'JP', x: r.x || '', photo: '', subs: 0, order: i,
+    };
+    map.set(l.id, l);
+    if (l.ch) byCh.set(l.ch, l);
+    for (const n of [l.name, ...l.aka]) byJa.set(normJa(stripNoise(n)), l);
+    if (l.en) byEn.set(enKey(l.en), l);
+  });
+
+  for (const h of state.data?.livers || []) {
+    // まずチャンネルIDで、無ければ名前で名簿の人を探す（名簿のIDが古くても名前でつながる）
+    let l = byCh.get(h.id);
+    if (!l) {
+      const cj = normJa(stripNoise(h.name));
+      l = byJa.get(cj) || byEn.get(enKey(h.en)) || byEn.get(enKey(stripNoise(h.name)));
+      if (!l && cj.length >= 3) {
+        for (const [k, v] of byJa) if (k.length >= 3 && cj.includes(k)) { l = v; break; }
+      }
+    }
+    if (l) {
+      if (!l.ch) l.ch = h.id;
+      if (h.id === l.ch || !l.photo) l.photo = h.photo || l.photo;
+      l.subs = Math.max(l.subs, h.subs || 0);
+      l.x = l.x || h.x || '';
+      l.en = l.en || h.en || '';
+      byCh.set(h.id, l);
+    } else {
+      // 名簿にまだいない人（新しくデビューした人など）はそのまま追加
+      const n = {
+        id: h.id, ch: h.id, name: h.name, kana: '', en: h.en || '', aka: [], group: h.group || '',
+        branch: /\bEN\b/.test(h.group || '') ? 'EN' : 'JP', x: h.x || '', photo: h.photo || '', subs: h.subs || 0, order: 1e5,
+      };
+      map.set(n.id, n);
+      byCh.set(n.id, n);
+    }
+  }
+
+  for (const l of map.values()) {
+    const words = String(l.en).split(/[\s.]+/).filter(Boolean);
+    l._ja = [l.name, l.kana, ...l.aka].filter(Boolean).map(normJa);
+    l._en = l.en ? [canon(l.en), ...words.map(canon)] : [];
+    l._sk = l.en ? [skel(l.en), ...words.map(skel)] : [];
+    l._group = normJa(l.group);
+  }
+  state.livers = map;
+  state.byCh = byCh;
+  const fresh = state.data?.updated && Date.now() - new Date(state.data.updated) < 2 * 3600e3;
+  state.liveIds = new Set(fresh
+    ? (state.data.videos || []).filter((v) => v.status === 'live').map((v) => keyOfCh(v.ch))
+    : []);
+  migrateIds();
+}
+
+// 前のバージョンでチャンネルIDのまま登録した推しを、名簿の人に付け替える
+function migrateIds() {
+  let changed = false;
+  const fix = (id) => {
+    if (!id || state.livers.has(id)) return id;
+    const l = state.byCh.get(id);
+    if (!l) return id;
+    changed = true;
+    return l.id;
+  };
+  state.favs = new Set([...state.favs].map(fix));
+  for (const d of state.deadlines) d.ch = fix(d.ch);
+  if (changed) persist();
+}
+
+/* ---------- 推しと締切の保存 ----------
+   いつもこの端末（localStorage）に保存し、Claudeのページとして開いたときは
+   あなたのClaudeアカウント（本人しか読めない場所）にも保存して、iPhoneとiPadで同じ内容にする */
+const sync = { ref: null, ready: false, mode: 'local', timer: 0, lastSent: '', chain: Promise.resolve() };
+const bodyOf = () => ({ favs: [...state.favs], deadlines: state.deadlines, v: 1 });
+
+function persist() {
+  store.set('oshi.favs', [...state.favs]);
+  store.set('oshi.deadlines', state.deadlines);
+  if (!sync.ref || !sync.ready) return;
+  clearTimeout(sync.timer);
+  sync.timer = setTimeout(pushRemote, 400);
+}
+function pushRemote() {
+  const body = bodyOf();
+  const s = JSON.stringify(body);
+  if (s === sync.lastSent) return;
+  sync.lastSent = s;
+  sync.chain = sync.chain
+    .then(() => sync.ref.set(body))
+    .catch(() => { sync.mode = 'local'; renderSyncNote(); });
+}
+function renderSyncNote() {
+  const text = sync.mode === 'cloud'
+    ? '推しと締切は、あなたのClaudeアカウントに保存しています（ほかの人には見えません）。iPhoneとiPadで同じ内容になります。'
+    : sync.mode === 'waiting'
+      ? '保存先のClaudeアカウントにまだつながっていません。いまはこの端末に保存しています。'
+      : '推しと締切は、この端末のブラウザに保存しています。';
+  document.querySelectorAll('.sync-note').forEach((p) => { p.textContent = text; });
+}
+async function connectSync() {
+  if (!window.claude?.use) return;
+  try {
+    const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+    const uid = db && user ? await user.id() : null;
+    if (!uid) return;
+    sync.ref = db.doc(`data/users/${uid}/oshi`);
+  } catch {
+    return;
+  }
+  const timeout = setTimeout(() => { if (sync.mode !== 'cloud') { sync.mode = 'waiting'; renderSyncNote(); } }, 10000);
+  sync.ref.onSnapshot((snap) => {
+    if (snap.metadata.hasPendingWrites) return;
+    if (!snap.metadata.fromCache) { clearTimeout(timeout); sync.mode = 'cloud'; }
+    if (snap.exists) {
+      const d = snap.data() || {};
+      const remote = { favs: Array.isArray(d.favs) ? [...d.favs] : [], deadlines: Array.isArray(d.deadlines) ? d.deadlines.map((x) => ({ ...x })) : [], v: 1 };
+      const s = JSON.stringify(remote);
+      if (s !== JSON.stringify(bodyOf())) {
+        state.favs = new Set(remote.favs);
+        state.deadlines = remote.deadlines;
+        store.set('oshi.favs', remote.favs);
+        store.set('oshi.deadlines', remote.deadlines);
+        renderAll();
+      }
+      sync.lastSent = s;
+      sync.ready = true;
+    } else if (!snap.metadata.fromCache) {
+      // はじめて使うとき：この端末にある推しと締切をアカウントに移す
+      sync.ready = true;
+      if (state.favs.size || state.deadlines.length) pushRemote();
+    }
+    renderSyncNote();
+  }, () => {
+    clearTimeout(timeout);
+    sync.mode = 'local';
+    renderSyncNote();
+  });
+}
+
+function setData(d) {
+  state.data = d;
+  buildLivers();
+  renderAll();
+}
+
+async function loadRoster() {
+  try {
+    const res = await fetch('livers.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(String(res.status));
+    state.roster = await res.json();
+    store.set('oshi.roster', state.roster);
+  } catch {
+    if (!state.roster) return;
+  }
+  buildLivers();
+  renderAll();
+}
+
+async function loadData() {
+  try {
+    const res = await fetch(`data.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (res.status === 404) {
+      // 配信データの置き場がない（Claudeのページとして開いた、またはまだ自動更新が一度も動いていない）
+      state.noSource = true;
+      state.offline = false;
+      renderAll();
+      return;
+    }
+    if (!res.ok) throw new Error(String(res.status));
+    const d = await res.json();
+    state.offline = false;
+    store.set('oshi.cache', d);
+    setData(d);
+  } catch {
+    state.offline = true;
+    if (!state.data) setData(store.get('oshi.cache', null));
+    else renderAll();
+  }
+}
+
+/* ---------- 画面: ホーム ---------- */
+function renderHome() {
+  document.querySelectorAll('.scope button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.scope === state.scope)));
+  const upd = $('#updated');
+  if (state.data?.updated) upd.textContent = `${ago(new Date(state.data.updated))}に更新${state.offline ? '（オフライン）' : ''}`;
+  else upd.textContent = '';
+
+  const el = $('#home-body');
+  const parts = [];
+
+  const soon = state.deadlines
+    .filter((x) => { const ms = new Date(x.due) - Date.now(); return ms > -6 * 3600e3 && ms < 72 * 3600e3; })
+    .sort((a, b) => new Date(a.due) - new Date(b.due));
+  if (soon.length) {
+    parts.push(`<h2 class="sec">今日やること</h2><ul class="todo">${soon.map(todoRow).join('')}</ul>`);
+  }
+
+  const hasFeed = !!state.data && state.data.error !== 'no-key';
+  $('.scope').hidden = !hasFeed;
+  const noFav = (state.scope === 'fav' || !hasFeed) && state.favs.size === 0;
+  if (noFav) {
+    parts.push(`<div class="empty"><p>推しを登録すると、ここに推しのYouTubeチャンネルが並びます。</p><a class="btn" href="#search">推しを探す</a></div>`);
+  }
+  if (!hasFeed) {
+    // 配信データがないときは、推しごとにYouTubeの「ライブ」「動画」タブへ1タップで飛べる一覧を出す
+    if (!noFav) parts.push(channelList());
+    if (state.data?.error === 'no-key') {
+      parts.push(`<p class="note">配信予定と新着をここに並べるには、GitHub の Settings → Secrets and variables → Actions に <b>HOLODEX_API_KEY</b> を登録してください。15分ごとに更新されるようになります。</p>`);
+    } else if (!state.data && !state.noSource) {
+      parts.push(`<p class="note">配信データを読み込めませんでした。電波のある場所で開き直してください。</p>`);
+    }
+    el.innerHTML = parts.join('');
+    return;
+  }
+  if (noFav) {
+    el.innerHTML = parts.join('');
+    return;
+  }
+
+  const filter = state.scope === 'all' ? () => true : (v) => state.favs.has(keyOfCh(v.ch));
+  const { live, upcoming, recent } = videosFor(filter);
+
+  if (live.length) {
+    parts.push(`<h2 class="sec"><span class="dot" aria-hidden="true"></span>いま配信中<span class="count">${live.length}枠</span></h2>
+      <div class="live-strip">${live.map(liveCard).join('')}</div>`);
+  }
+
+  parts.push(`<h2 class="sec">配信予定<span class="count">3日先まで</span></h2>`);
+  parts.push(upcoming.length ? upcomingByDay(upcoming) : `<p class="note">予定されている配信はまだありません。</p>`);
+
+  parts.push(`<h2 class="sec">新着</h2>`);
+  if (recent.length) {
+    parts.push(`<ul class="list">${recent.slice(0, state.recentLimit).map((v) => vidRow(v)).join('')}</ul>`);
+    if (recent.length > state.recentLimit) parts.push(`<button class="more" type="button" data-more>もっと見る</button>`);
+  } else {
+    parts.push(`<p class="note">最近の動画・アーカイブはありません。</p>`);
+  }
+  el.innerHTML = parts.join('');
+}
+
+function channelList() {
+  const favList = liveFirst([...state.favs].map((id) => state.livers.get(id)).filter(Boolean));
+  return `<h2 class="sec">推しのチャンネル<span class="count">${favList.length}人</span></h2>
+    <ul class="list">${favList.map((l) => `<li class="liver">
+      <button class="open" type="button" data-open="${esc(l.id)}">${avatar(l)}
+        <span class="body"><span class="nm">${esc(l.name)}${onAirTag(l)}</span><span class="sub">${esc(l.group)}</span></span>
+      </button>
+      <a class="pill" href="${ytTab(l, 'streams')}" target="_blank" rel="noopener" aria-label="${esc(l.name)}の配信予定とアーカイブ">配信</a>
+      <a class="pill" href="${ytTab(l, 'videos')}" target="_blank" rel="noopener" aria-label="${esc(l.name)}の動画">動画</a>
+    </li>`).join('')}</ul>
+    <p class="note">「配信」を押すと、YouTubeのライブタブ（配信中・配信予定・アーカイブ）が開きます。</p>`;
+}
+
+function todoRow(x) {
+  const ms = new Date(x.due) - Date.now(), lf = left(ms);
+  const l = x.ch ? state.livers.get(x.ch) : null;
+  return `<li><span class="left${lf.over ? ' over' : ''}">${lf.text}</span>
+    <span class="body"><span class="ttl">${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>` : esc(x.title)}</span>
+    <span class="meta"><span>${fmtDue(new Date(x.due))}</span>${l ? `<span>${esc(l.name)}</span>` : ''}</span></span></li>`;
+}
+
+/* ---------- 画面: 推しを探す ---------- */
+function favChips() {
+  const favList = liveFirst([...state.favs].map((id) => state.livers.get(id)).filter(Boolean));
+  return favList.length
+    ? `<h2 class="sec">登録中の推し<span class="count">${favList.length}人</span></h2><div class="chips">${favList.map((l) =>
+        `<button class="chip${isLive(l) ? ' on-air' : ''}" type="button" data-open="${esc(l.id)}">${avatar(l, 'sm', false)}${esc(l.name)}${isLive(l) ? '<span class="visually-hidden">（配信中）</span>' : ''}</button>`).join('')}</div>`
+    : '';
+}
+
+function renderSearch() {
+  $('#fav-chips').innerHTML = favChips();
+  if (!state.livers.size) {
+    $('#result-count').textContent = 'ライバーの一覧を読み込み中です。';
+    $('#results').innerHTML = '';
+    return;
+  }
+  const q = $('#q').value;
+  const res = searchLivers(q);
+  $('#result-count').textContent = q.trim()
+    ? (res.length ? `${res.length}人見つかりました` : '見つかりませんでした。カタカナやフルネームの一部でも試してみてください。')
+    : `にじさんじ ${res.length}人（${res.some((l) => l.subs) ? '登録者が多い順' : 'デビュー順'}）`;
+  $('#results').innerHTML = res.map((l) => {
+    const on = state.favs.has(l.id);
+    return `<li class="liver">
+      <button class="open" type="button" data-open="${esc(l.id)}">${avatar(l)}
+        <span class="body"><span class="nm">${esc(l.name)}${onAirTag(l)}</span><span class="sub">${esc([subName(l), l.group].filter(Boolean).join('　'))}</span></span>
+      </button>
+      <button class="fav" type="button" data-fav="${esc(l.id)}" aria-pressed="${on}" aria-label="${esc(l.name)}を${on ? '推しから外す' : '推しにする'}">${on ? '★ 推し' : '＋ 推しにする'}</button>
+    </li>`;
+  }).join('');
+}
+
+function toggleFav(id) {
+  if (state.favs.has(id)) state.favs.delete(id); else state.favs.add(id);
+  persist();
+  renderAll();
+  if ($('#sheet').open) openSheet(id);
+}
+
+/* ---------- 詳細シート ---------- */
+function openSheet(id) {
+  const l = state.livers.get(id);
+  if (!l) return;
+  const on = state.favs.has(id);
+  const { live, upcoming, recent } = videosFor((v) => keyOfCh(v.ch) === l.id);
+  const sub = subName(l);
+  $('#sheet-in').innerHTML = `
+    <button class="close" type="button" data-close>閉じる</button>
+    <div class="sheet-head">${avatar(l, 'lg')}<div><h3>${esc(l.name)}${onAirTag(l)}</h3>
+      <div class="meta">${sub ? `<span>${esc(sub)}</span>` : ''}${l.group ? `<span>${esc(l.group)}</span>` : ''}${l.subs ? `<span>登録者 ${fmtSubs(l.subs)}</span>` : ''}</div></div></div>
+    <div class="sheet-acts">
+      <button class="fav" type="button" data-fav="${esc(id)}" aria-pressed="${on}">${on ? '★ 推し登録中' : '＋ 推しにする'}</button>
+      <a class="btn ghost" href="${ytLink(l)}" target="_blank" rel="noopener">${hasYt(l) ? 'YouTube' : 'YouTubeで探す'}</a>
+      ${hasYt(l) ? `<a class="btn ghost" href="${ytTab(l, 'streams')}" target="_blank" rel="noopener">配信・予定</a>` : ''}
+      ${l.x ? `<a class="btn ghost" href="https://x.com/${encodeURIComponent(l.x)}" target="_blank" rel="noopener">X</a>` : ''}
+    </div>
+    ${live.length ? `<h2 class="sec"><span class="dot" aria-hidden="true"></span>いま配信中</h2><ul class="list">${live.map(slotRow).join('')}</ul>` : ''}
+    <h2 class="sec">配信予定</h2>${upcoming.length ? upcomingByDay(upcoming) : '<p class="note">いまのところ予定はありません。</p>'}
+    <h2 class="sec">最近の動画</h2>${recent.length ? `<ul class="list">${recent.slice(0, 10).map((v) => vidRow(v, false)).join('')}</ul>` : '<p class="note">最近の動画はまだ取得できていません。</p>'}`;
+  const dlg = $('#sheet');
+  if (!dlg.open) { if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', ''); }
+}
+function closeSheet() { const d = $('#sheet'); if (d.close) d.close(); else d.removeAttribute('open'); }
+
+/* ---------- 画面: 締切 ---------- */
+function saveDeadlines() { persist(); }
+// Claudeのページの中ではファイルを保存できないので、Googleカレンダーの登録画面を開く
+const inClaude = () => !!window.claude?.use;
+function gcalUrl(x) {
+  const z = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const d = new Date(x.due), end = new Date(d.getTime() + 15 * 6e4);
+  const l = x.ch ? state.livers.get(x.ch) : null;
+  const details = [l ? `推し：${l.name}` : '', x.url || ''].filter(Boolean).join('\n');
+  const p = new URLSearchParams({ action: 'TEMPLATE', text: `【締切】${x.title}`, dates: `${z(d)}/${z(end)}`, details });
+  return `https://calendar.google.com/calendar/render?${p}`;
+}
+function renderDeadlines() {
+  const sel = $('#dl-ch'), cur = sel.value;
+  const favList = [...state.favs].map((id) => state.livers.get(id)).filter(Boolean);
+  sel.innerHTML = `<option value="">選ばない</option>` + favList.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('');
+  sel.value = cur;
+
+  const now = Date.now();
+  const sorted = [...state.deadlines].sort((a, b) => new Date(a.due) - new Date(b.due));
+  const up = sorted.filter((x) => new Date(x.due) > now), past = sorted.filter((x) => new Date(x.due) <= now).reverse();
+  $('#dl-list').innerHTML = up.length ? up.map(dlRow).join('') : '<li class="note">まだ締切はありません。チケットやグッズの申込期限を入れておくと、ホームの「今日やること」に3日前から出ます。</li>';
+  $('#dl-past-wrap').hidden = !past.length;
+  $('#dl-past').innerHTML = past.map(dlRow).join('');
+}
+function dlRow(x) {
+  const d = new Date(x.due), lf = left(d - Date.now());
+  const l = x.ch ? state.livers.get(x.ch) : null;
+  return `<li class="dl-item"><div class="dl-head"><span class="left${lf.over ? ' over' : ''}">${lf.text}</span>
+    <span class="body"><span class="ttl">${esc(x.title)}</span><span class="meta"><span>${fmtDue(d)}</span>${l ? `<span>${esc(l.name)}</span>` : ''}</span></span></div>
+    <div class="dl-actions">
+      ${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">リンクを開く</a>` : ''}
+      ${lf.over ? '' : inClaude()
+        ? `<a href="${esc(gcalUrl(x))}" target="_blank" rel="noopener">Googleカレンダーに追加</a>`
+        : `<button type="button" data-ics="${esc(x.id)}">カレンダーに追加</button><a href="${esc(gcalUrl(x))}" target="_blank" rel="noopener">Googleカレンダー</a>`}
+      <button type="button" data-del="${esc(x.id)}">削除</button>
+    </div></li>`;
+}
+
+// 締切をカレンダー用ファイル(.ics)にする。前日と3時間前に通知
+function icsFor(x) {
+  const z = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const t = (s) => String(s || '').replace(/[\\;,]/g, (c) => '\\' + c).replace(/\r?\n/g, '\\n');
+  const d = new Date(x.due), end = new Date(d.getTime() + 15 * 6e4);
+  const l = x.ch ? state.livers.get(x.ch) : null;
+  const desc = [l ? `推し：${l.name}` : '', x.url || ''].filter(Boolean).join('\n');
+  return [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//oshi-time//JA', 'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT', `UID:${x.id}@oshi-time`, `DTSTAMP:${z(new Date())}`, `DTSTART:${z(d)}`, `DTEND:${z(end)}`,
+    `SUMMARY:${t('【締切】' + x.title)}`, desc ? `DESCRIPTION:${t(desc)}` : '', x.url ? `URL:${t(x.url)}` : '',
+    'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', `DESCRIPTION:${t('明日締切：' + x.title)}`, 'END:VALARM',
+    'BEGIN:VALARM', 'TRIGGER:-PT3H', 'ACTION:DISPLAY', `DESCRIPTION:${t('あと3時間で締切：' + x.title)}`, 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR',
+  ].filter(Boolean).join('\r\n');
+}
+function downloadIcs(x) {
+  const blob = new Blob([icsFor(x)], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'shimekiri.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+/* ---------- 画面切り替え ---------- */
+const VIEWS = ['home', 'search', 'deadlines'];
+function currentView() { const h = location.hash.slice(1); return VIEWS.includes(h) ? h : 'home'; }
+function show() {
+  const v = currentView();
+  for (const name of VIEWS) $(`#view-${name}`).hidden = name !== v;
+  document.querySelectorAll('nav.tabs a').forEach((a) => {
+    if (a.dataset.tab === v) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+  window.scrollTo(0, 0);
+}
+function renderAll() { renderHome(); renderSearch(); renderDeadlines(); }
+
+/* ---------- 操作 ---------- */
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-fav],[data-open],[data-close],[data-scope],[data-more],[data-ics],[data-del]');
+  if (!t) {
+    if (e.target === $('#sheet')) closeSheet();
+    return;
+  }
+  if (t.dataset.fav) return toggleFav(t.dataset.fav);
+  if (t.dataset.open) return openSheet(t.dataset.open);
+  if ('close' in t.dataset) return closeSheet();
+  if (t.dataset.scope) { state.scope = t.dataset.scope; store.set('oshi.scope', state.scope); state.recentLimit = 12; return renderHome(); }
+  if ('more' in t.dataset) { state.recentLimit += 20; return renderHome(); }
+  if (t.dataset.ics) { const x = state.deadlines.find((d) => d.id === t.dataset.ics); if (x) downloadIcs(x); return; }
+  if (t.dataset.del) {
+    // 1回目で確認の表示に変わり、4秒以内にもう一度押すと削除
+    if (t.dataset.armed !== '1') {
+      t.dataset.armed = '1';
+      t.textContent = 'もう一度押すと削除';
+      setTimeout(() => { if (t.isConnected) { t.dataset.armed = ''; t.textContent = '削除'; } }, 4000);
+      return;
+    }
+    state.deadlines = state.deadlines.filter((d) => d.id !== t.dataset.del);
+    saveDeadlines(); renderAll();
+  }
+});
+
+let qTimer;
+$('#q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(renderSearch, 80); });
+
+$('#dl-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const due = new Date(String(f.get('due')));
+  if (isNaN(due)) return;
+  state.deadlines.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    title: String(f.get('title')).trim(),
+    due: due.toISOString(),
+    ch: String(f.get('ch') || ''),
+    url: /^https?:\/\//.test(String(f.get('url'))) ? String(f.get('url')) : '',
+  });
+  saveDeadlines();
+  e.target.reset();
+  renderAll();
+});
+
+window.addEventListener('hashchange', show);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !state.noSource) loadData(); });
+setInterval(() => { if (document.visibilityState === 'visible' && !state.noSource) loadData(); }, 5 * 60e3);
+setInterval(() => { if (document.visibilityState === 'visible') renderHome(); }, 60e3);
+
+if ('serviceWorker' in navigator && location.protocol === 'https:' && !inClaude()) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+state.data = store.get('oshi.cache', null);
+buildLivers();
+renderAll();
+renderSyncNote();
+show();
+loadRoster();
+loadData();
+connectSync();
+</script>
+</body>
+</html>
