@@ -1,11 +1,57 @@
-// にじさんじ全員のチャンネル・配信中/予定・最近の動画を Holodex API から集めて data.json に書き出す
+// にじさんじ全員のチャンネル・配信中/予定・最近の動画を Holodex API から集めて書き出す
+//   accounts.json にアカウントがないとき … data.json（そのまま）
+//   アカウントがあるとき             … data.enc.json（暗号化。登録された人だけが開ける）
 // 実行: HOLODEX_API_KEY=xxxx node scripts/fetch-data.mjs
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+
+const nacl = createRequire(import.meta.url)('../vendor/nacl-fast.js');
 
 const KEY = process.env.HOLODEX_API_KEY;
 const BASE = process.env.HOLODEX_BASE || 'https://holodex.net/api/v2';
 const ORG = 'Nijisanji';
 const OUT = new URL('../data.json', import.meta.url);
+const OUT_ENC = new URL('../data.enc.json', import.meta.url);
+const ACCOUNTS = new URL('../accounts.json', import.meta.url);
+
+const b64u = (u8) => Buffer.from(u8).toString('base64url');
+const unb64u = (s) => new Uint8Array(Buffer.from(String(s), 'base64url'));
+
+async function readAccounts() {
+  try {
+    const d = JSON.parse(await readFile(ACCOUNTS, 'utf8'));
+    return Array.isArray(d.accounts) ? d.accounts.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+// 書き出し。アカウントが1つでもあれば、平文の data.json は作らずに暗号化した data.enc.json だけを作る。
+// 毎回ランダムな「中身の鍵」で全体を暗号化し、その鍵を、登録された人それぞれの公開鍵で包む（X25519 + XSalsa20-Poly1305）。
+async function writeOutput(data) {
+  const accounts = await readAccounts();
+  if (accounts.length === 0) {
+    await writeFile(OUT, JSON.stringify(data));
+    await rm(OUT_ENC, { force: true });
+    return '公開（アカウントなし）';
+  }
+  const recipients = accounts.filter((a) => a.v === 3 && typeof a.pub === 'string');
+  const contentKey = nacl.randomBytes(nacl.secretbox.keyLength);
+  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+  const box = nacl.secretbox(new TextEncoder().encode(JSON.stringify(data)), nonce, contentKey);
+  const eph = nacl.box.keyPair();
+  const keys = [];
+  for (const a of recipients) {
+    const pub = unb64u(a.pub);
+    if (pub.length !== nacl.box.publicKeyLength) continue;
+    const n = nacl.randomBytes(nacl.box.nonceLength);
+    keys.push({ pub: a.pub, nonce: b64u(n), key: b64u(nacl.box(contentKey, n, pub, eph.secretKey)) });
+  }
+  const out = { v: 3, updated: data.updated, epk: b64u(eph.publicKey), nonce: b64u(nonce), box: b64u(box), keys };
+  await writeFile(OUT_ENC, JSON.stringify(out));
+  await rm(OUT, { force: true });
+  return `暗号化（開ける人 ${keys.length}人）`;
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -77,11 +123,8 @@ function toVideo(v) {
 async function main() {
   if (!KEY) {
     // キー未設定でもサイト自体は表示できるよう、空のデータを書いて正常終了する
-    await writeFile(
-      OUT,
-      JSON.stringify({ updated: new Date().toISOString(), error: 'no-key', livers: [], videos: [] })
-    );
-    console.warn('HOLODEX_API_KEY が設定されていません。空の data.json を書き出しました。');
+    const how = await writeOutput({ updated: new Date().toISOString(), error: 'no-key', livers: [], videos: [] });
+    console.warn(`HOLODEX_API_KEY が設定されていません。空のデータを書き出しました（${how}）。`);
     return;
   }
 
@@ -117,8 +160,8 @@ async function main() {
     livers: [...livers.values()],
     videos: [...videos.values()].filter((v) => v.ch && v.start),
   };
-  await writeFile(OUT, JSON.stringify(data));
-  console.log(`ライバー ${data.livers.length}人 / 動画・配信 ${data.videos.length}件 を書き出しました`);
+  const how = await writeOutput(data);
+  console.log(`ライバー ${data.livers.length}人 / 動画・配信 ${data.videos.length}件 を書き出しました（${how}）`);
   await report(data);
 }
 
@@ -153,11 +196,9 @@ async function report(data) {
     if (cj.length >= 3) for (const [k, n] of names) if (!k.startsWith('en:') && k.length >= 3 && cj.includes(k)) return n;
     return null;
   };
-  const chName = new Map(data.livers.map((c) => [c.id, c.name]));
-  const live = data.videos.filter((v) => v.status === 'live');
   const counts = ['live', 'upcoming', 'past'].map((s) => `${s} ${data.videos.filter((v) => v.status === s).length}`).join(' / ');
+  // ログは誰でも見られるので、配信の中身（誰が配信中か）は出さず、数だけ出す
   console.log(`配信の内訳: ${counts}`);
-  console.log(`いま配信中: ${live.map((v) => chName.get(v.ch) || v.ch).join('、') || 'なし'}`);
   const unmatched = data.livers.filter((c) => !matchOf(c));
   const matched = new Set(data.livers.map(matchOf).filter(Boolean));
   console.log(`名簿と結びついた人: ${matched.size} / ${roster.length}`);

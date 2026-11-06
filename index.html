@@ -372,18 +372,19 @@ footer.credit { margin: 36px 0 0; font-size: 12px; color: var(--muted); }
   <h3 class="sheet-title" id="req-title">アカウントの申請</h3>
   <form class="dl" id="request-form" novalidate>
     <label>アカウント名（20文字まで）<input id="req-name" autocomplete="username" autocapitalize="off" maxlength="20" required></label>
-    <label>パスワード（8文字以上）<input id="req-pass" type="password" autocomplete="new-password" required></label>
+    <label>パスワード（8文字以上。長いほど安全です）<input id="req-pass" type="password" autocomplete="new-password" required></label>
     <label>パスワードをもう一度<input id="req-pass2" type="password" autocomplete="new-password" required></label>
     <p class="form-error" id="req-error" role="alert" hidden></p>
     <button class="btn" type="submit" id="req-btn">申請コードを作る</button>
   </form>
   <div id="req-result" hidden>
-    <p class="gate-lead">この申請コードを、アプリの管理者に送ってください。登録されると、いま決めたアカウント名とパスワードでログインできるようになります。パスワードそのものはコードに入っていません。</p>
+    <p class="gate-lead">この申請コードを、アプリの管理者に送ってください。コードにはアカウント名もパスワードも入っていないので、だれのコードか分かるように、送るときに名前も伝えてください。登録されると、いま決めたアカウント名とパスワードでログインできるようになります。どちらかを忘れると申請し直しになるので、両方とも控えておいてください。</p>
     <textarea class="code-box" id="req-code" readonly rows="4" aria-label="申請コード"></textarea>
     <button class="btn" type="button" data-copy-code>コピー</button>
   </div>
 </div></dialog>
 
+<script src="vendor/nacl-fast.js"></script>
 <script>
 'use strict';
 document.documentElement.lang = 'ja';
@@ -769,19 +770,31 @@ async function loadRoster() {
   renderAll();
 }
 
+// 鍵がかかっているときは、暗号化された data.enc.json を読み、この端末の秘密鍵で開く
 async function loadData() {
+  if (!auth.started || $('#app').hidden) return; // ログイン前・ログアウト後は読まない
+  const locked = auth.mode === 'locked';
   try {
-    const res = await fetch(`data.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (res.status === 404) {
+    const res = await fetch(`${locked ? 'data.enc.json' : 'data.json'}?t=${Date.now()}`, { cache: 'no-store' });
+    if (res.status === 404 && !locked) {
       // 配信データの置き場がない（Claudeのページとして開いた、またはまだ自動更新が一度も動いていない）
       state.noSource = true;
       state.offline = false;
       renderAll();
       return;
     }
-    if (!res.ok) throw new Error(String(res.status));
-    const d = await res.json();
+    if (!res.ok && res.status !== 404) throw new Error(String(res.status));
+    const d = !locked ? await res.json() : res.ok ? openFeed(await res.json()) : null;
     state.offline = false;
+    if (!d) {
+      // 登録されたばかりで、まだ自分用の鍵が入ったデータができていない（数分でできる）。
+      // 登録を外された場合もここに来るので、手元に残っている配信データは消す
+      state.pending = true;
+      store.set('oshi.cache', null);
+      setData(null);
+      return;
+    }
+    state.pending = false;
     store.set('oshi.cache', d);
     setData(d);
   } catch {
@@ -819,6 +832,8 @@ function renderHome() {
     if (!noFav) parts.push(channelList());
     if (state.data?.error === 'no-key') {
       parts.push(`<p class="note">配信予定と新着をここに並べるには、GitHub の Settings → Secrets and variables → Actions に <b>HOLODEX_API_KEY</b> を登録してください。5分ごとに更新されるようになります。</p>`);
+    } else if (!state.data && state.pending) {
+      parts.push(`<p class="note">配信データの準備中です。アカウントが登録されてから届くまで、5〜10分ほどかかります。しばらくしてから開き直してください。</p>`);
     } else if (!state.data && !state.noSource) {
       parts.push(`<p class="note">配信データを読み込めませんでした。電波のある場所で開き直してください。</p>`);
     }
@@ -1068,17 +1083,19 @@ if ('serviceWorker' in navigator && location.protocol === 'https:' && !inClaude(
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-/* ---------- ログイン ----------
-   パスワードは Argon2id（1回ごとに大きなメモリと時間を使う変換）で「鍵」に変え、
-   accounts.json には、その鍵をさらに SHA-256 にかけた「確認用の値（check）」だけを置く。
-   パスワードも鍵も公開されないので、公開された値を書き写してもログインできない。
-   ログインした端末には「鍵」だけを保存する。アカウントが1つもないうちは鍵をかけない。 */
-const KDF = { v: 2, m: 131072, t: 4, p: 1 }; // 128MiB × 4回
-const auth = { accounts: null, session: store.get('oshi.session', null), started: false };
+/* ---------- ログインと暗号化 ----------
+   アカウント名とパスワードを Argon2id（128MiB × 4回）にかけて「秘密鍵」を作り、
+   accounts.json には、そこから計算した「公開鍵」だけを置く（名前もパスワードも置かない）。
+   配信データ（data.enc.json）は、更新のたびにランダムな鍵で暗号化されていて、その鍵は
+   登録された人それぞれの公開鍵で包まれている（X25519 + XSalsa20-Poly1305、tweetnacl）。
+   秘密鍵を持つ人だけが中身を開ける。ログインした端末には秘密鍵だけを保存する。
+   アカウントが1つもないうちは鍵をかけず、データも暗号化しない。 */
+const KDF = { v: 3, m: 131072, t: 4, p: 1 }; // 128MiB × 4回
+const auth = { accounts: null, mode: 'open', session: store.get('oshi.session', null), started: false };
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = (s) => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 const normName = (s) => String(s || '').normalize('NFKC').trim();
-const isV2 = (a) => a && a.v === 2 && a.salt && a.check;
+const isV3 = (a) => a && a.v === 3 && typeof a.pub === 'string';
 
 // Argon2 の部品（vendor/）は、ログインや申請のときだけ読み込む
 function loadScript(src) {
@@ -1104,16 +1121,23 @@ const withTimeout = (promise, ms) => Promise.race([
   new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
 ]);
 
-// パスワード → 鍵（32バイト）。画面が「確認中…」に変わってから重い計算を始める
-async function deriveKey(pass, salt, { m, t, p }) {
+// Argon2 のソルトは、アカウント名から決める（公開ファイルに名前を置かないため）
+async function saltFor(name) {
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`oshi-time/v3/${normName(name)}`));
+  return new Uint8Array(h).slice(0, 16);
+}
+
+// アカウント名とパスワード → 秘密鍵（32バイト）。画面が「確認中…」に変わってから重い計算を始める
+async function deriveSecret(name, pass, { m, t, p }) {
   await ensureArgon2();
+  const salt = await saltFor(name);
   await new Promise((r) => setTimeout(r, 30));
   const r = await withTimeout(window.argon2.hash({
     pass, salt, mem: m, time: t, parallelism: p, hashLen: 32, type: window.argon2.ArgonType.Argon2id,
   }), 60000);
   return new Uint8Array(r.hash);
 }
-const checkOf = async (key) => b64u(await crypto.subtle.digest('SHA-256', key));
+const pubOf = (secret) => b64u(window.nacl.box.keyPair.fromSecretKey(secret).publicKey);
 
 async function loadAccounts() {
   try {
@@ -1121,7 +1145,7 @@ async function loadAccounts() {
     if (res.status === 404) return [];
     if (!res.ok) throw new Error(String(res.status));
     const d = await res.json();
-    const list = Array.isArray(d.accounts) ? d.accounts.filter((a) => a && a.name) : [];
+    const list = Array.isArray(d.accounts) ? d.accounts.filter(Boolean) : [];
     store.set('oshi.accounts', list);
     return list;
   } catch {
@@ -1129,15 +1153,36 @@ async function loadAccounts() {
   }
 }
 
-async function sessionValid() {
-  const s = auth.session;
-  if (!s || !s.key) return false;
-  const acc = (auth.accounts || []).find((a) => isV2(a) && normName(a.name) === s.name);
-  if (!acc) return false;
+function sessionSecret() {
   try {
-    return (await checkOf(unb64u(s.key))) === acc.check;
+    const s = auth.session?.key ? unb64u(auth.session.key) : null;
+    return s && s.length === 32 ? s : null;
   } catch {
-    return false;
+    return null;
+  }
+}
+
+function sessionValid() {
+  const secret = sessionSecret();
+  if (!secret || !window.nacl) return false;
+  const pub = pubOf(secret);
+  return (auth.accounts || []).some((a) => isV3(a) && a.pub === pub);
+}
+
+// 暗号化された配信データを、この端末の秘密鍵で開く。開けなければ null
+function openFeed(enc) {
+  const secret = sessionSecret();
+  if (!secret || !window.nacl || !enc || enc.v !== 3) return null;
+  try {
+    const pub = pubOf(secret);
+    const k = (enc.keys || []).find((x) => x.pub === pub);
+    if (!k) return null;
+    const contentKey = window.nacl.box.open(unb64u(k.key), unb64u(k.nonce), unb64u(enc.epk), secret);
+    if (!contentKey) return null;
+    const plain = window.nacl.secretbox.open(unb64u(enc.box), unb64u(enc.nonce), contentKey);
+    return plain ? JSON.parse(new TextDecoder().decode(plain)) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -1153,7 +1198,13 @@ function unlock() {
   $('#gate').hidden = true;
   $('#app').hidden = false;
   renderAccountBox();
-  if (auth.started) return;
+  if (auth.started) {
+    // ログアウトのあとに、もう一度ログインしたとき
+    state.data = store.get('oshi.cache', null);
+    setData(state.data);
+    loadData();
+    return;
+  }
   auth.started = true;
   state.data = store.get('oshi.cache', null);
   buildLivers();
@@ -1169,7 +1220,7 @@ function renderAccountBox() {
   const box = $('#account-box');
   if (!box) return;
   if (inClaude()) { box.innerHTML = ''; return; }
-  const locked = (auth.accounts || []).length > 0;
+  const locked = auth.mode === 'locked';
   box.innerHTML = locked && auth.session
     ? `<span>「${esc(auth.session.name)}」でログイン中</span><button class="btn ghost" type="button" data-logout>ログアウト</button><button class="btn ghost" type="button" data-request>アカウントを申請する</button>`
     : `<span>まだ鍵がかかっていません。アカウントを登録すると、ログインした人だけが使えるようになります。</span><button class="btn ghost" type="button" data-request>アカウントを申請する</button>`;
@@ -1177,14 +1228,20 @@ function renderAccountBox() {
 
 async function boot() {
   // Claudeのページとして開いたときは、見られる人をClaude側で決めているので鍵はかけない
-  if (inClaude()) return unlock();
+  if (inClaude()) {
+    auth.mode = 'claude';
+    return unlock();
+  }
   auth.accounts = await loadAccounts();
   if (auth.accounts === null) return lock('ネットにつながっていないため、ログインを確かめられません。電波のある場所で開き直してください。');
-  if (auth.accounts.length === 0 || (await sessionValid())) return unlock();
-  if (auth.session) {
-    auth.session = null;
-    store.set('oshi.session', null);
-  }
+  auth.mode = auth.accounts.length ? 'locked' : 'open';
+  if (auth.mode === 'open') return unlock();
+  if (!window.nacl) return lock('アプリの部品を読み込めませんでした。電波のある場所で開き直してください。');
+  if (sessionValid()) return unlock();
+  // ログインできない状態なら、前の人の分も含めて、この端末に残っている配信データを消す
+  auth.session = null;
+  store.set('oshi.session', null);
+  store.set('oshi.cache', null);
   lock();
 }
 
@@ -1198,15 +1255,23 @@ $('#login-form').addEventListener('submit', async (e) => {
   btn.disabled = true;
   btn.textContent = '確認中…（数秒かかります）';
   try {
-    const acc = auth.accounts.find((a) => normName(a.name) === name);
-    if (acc && !isV2(acc)) {
-      return lock('ログインの仕組みを新しくしたため、このアカウントはもう一度申請が必要です。下の「アカウントを申請する」から作り直して、管理者に送ってください。');
+    // 名前とパスワードから秘密鍵を作り、その公開鍵が accounts.json に載っていればログインできる。
+    // 公開ファイルに名前はないので、名前だけ合っているかどうかは誰にも分からない
+    const v3 = auth.accounts.filter(isV3);
+    const paramSets = [...new Map((v3.length ? v3 : [KDF]).map((a) => [`${a.m}/${a.t}/${a.p}`, { m: a.m, t: a.t, p: a.p }])).values()];
+    const pubs = new Set(v3.map((a) => a.pub));
+    let secret = null;
+    for (const ps of paramSets) {
+      const s = await deriveSecret(name, pass, ps);
+      if (pubs.has(pubOf(s))) { secret = s; break; }
     }
-    // 名前が違うときも同じだけ時間をかけて、名前があるかどうかを分かりにくくする
-    const salt = acc ? unb64u(acc.salt) : crypto.getRandomValues(new Uint8Array(16));
-    const key = await deriveKey(pass, salt, acc ? { m: acc.m, t: acc.t, p: acc.p } : KDF);
-    if (!acc || (await checkOf(key)) !== acc.check) return lock('アカウント名かパスワードが違います。');
-    auth.session = { name, key: b64u(key) };
+    if (!secret) {
+      const hasOld = auth.accounts.some((a) => !isV3(a));
+      return lock(hasOld
+        ? 'アカウント名かパスワードが違います。11月6日までに作ったアカウントは、ログインの仕組みを新しくしたため使えなくなりました。下の「アカウントを申請する」から申請し直してください。'
+        : 'アカウント名かパスワードが違います。');
+    }
+    auth.session = { name, key: b64u(secret) };
     store.set('oshi.session', auth.session);
     $('#login-pass').value = '';
     unlock();
@@ -1238,15 +1303,15 @@ $('#request-form').addEventListener('submit', async (e) => {
   if ([...name].length > 20) return fail('アカウント名は20文字までにしてください。');
   if (pass.length < 8) return fail('パスワードは8文字以上にしてください。');
   if (pass !== $('#req-pass2').value) return fail('2つのパスワードが同じになっていません。');
-  if ((auth.accounts || []).some((a) => isV2(a) && normName(a.name) === name)) return fail('このアカウント名はもう使われています。別の名前にしてください。');
   err.hidden = true;
   const btn = $('#req-btn');
   btn.disabled = true;
   btn.textContent = '作成中…（数秒かかります）';
   try {
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    const key = await deriveKey(pass, salt, KDF);
-    $('#req-code').value = JSON.stringify({ name, v: KDF.v, m: KDF.m, t: KDF.t, p: KDF.p, salt: b64u(salt), check: await checkOf(key) });
+    // 申請コードに入るのは公開鍵だけ（アカウント名もパスワードも入らない）
+    const pub = pubOf(await deriveSecret(name, pass, KDF));
+    if ((auth.accounts || []).some((a) => isV3(a) && a.pub === pub)) return fail('このアカウント名とパスワードは、もう登録されています。そのままログインできます。');
+    $('#req-code').value = JSON.stringify({ v: KDF.v, m: KDF.m, t: KDF.t, p: KDF.p, pub });
     $('#request-form').hidden = true;
     $('#req-result').hidden = false;
   } catch {
@@ -1266,8 +1331,11 @@ document.addEventListener('click', async (e) => {
   if ('request' in t.dataset) return openRequest();
   if ('closeRequest' in t.dataset) return closeRequest();
   if ('logout' in t.dataset) {
+    // 秘密鍵と、開いた配信データを、この端末から消す
     auth.session = null;
     store.set('oshi.session', null);
+    store.set('oshi.cache', null);
+    setData(null);
     return lock();
   }
   if ('copyCode' in t.dataset) {
