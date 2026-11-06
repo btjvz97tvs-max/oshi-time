@@ -274,10 +274,38 @@ nav.tabs a[aria-current="page"] { color: var(--accent); }
 nav.tabs svg { width: 24px; height: 24px; }
 
 footer.credit { margin: 36px 0 0; font-size: 12px; color: var(--muted); }
+/* ログインとアカウント */
+.gate-lead { margin: 0; font-size: 14px; color: var(--muted); }
+.form-error { margin: 0; font-size: 13px; font-weight: 700; color: var(--live); }
+.sheet-title { margin: 0 0 4px; font: 800 20px/1.3 var(--round); }
+.code-box {
+  display: block; width: 100%; margin: 12px 0; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; word-break: break-all; resize: none;
+}
+#request .dl { margin-top: 12px; }
+.account { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 28px; font-size: 13px; color: var(--muted); }
+.account .btn { padding: 6px 12px; font-size: 13px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 </style>
 </head>
 <body>
+<!-- ログイン画面（accounts.json にアカウントが1つ以上あるときだけ出る） -->
+<section id="gate" hidden aria-labelledby="gate-title">
+  <div class="wrap">
+    <header class="top"><h1 class="brand" id="gate-title">推しタイム</h1></header>
+    <form class="dl" id="login-form" novalidate>
+      <p class="gate-lead">このアプリは、登録されたアカウントだけが使えます。</p>
+      <label>アカウント名<input id="login-name" name="name" autocomplete="username" autocapitalize="off" maxlength="20" required></label>
+      <label>パスワード<input id="login-pass" name="pass" type="password" autocomplete="current-password" required></label>
+      <p class="form-error" id="login-error" role="alert" hidden></p>
+      <button class="btn" type="submit" id="login-btn">ログイン</button>
+    </form>
+    <button class="more" type="button" data-request>アカウントを申請する</button>
+  </div>
+</section>
+
+<div id="app" hidden>
 <div class="wrap">
 
   <section id="view-home" aria-labelledby="brand">
@@ -299,6 +327,7 @@ footer.credit { margin: 36px 0 0; font-size: 12px; color: var(--muted); }
     <div id="fav-chips"></div>
     <p class="note" id="result-count"></p>
     <ul class="list" id="results"></ul>
+    <div class="account" id="account-box"></div>
     <footer class="credit"><p class="sync-note"></p>非公式のファンアプリです。ライバーの名簿は2026年11月時点の公開情報をもとに作成し、配信データは <a href="https://holodex.net" target="_blank" rel="noopener">Holodex</a> から取得しています。</footer>
   </section>
 
@@ -333,8 +362,27 @@ footer.credit { margin: 36px 0 0; font-size: 12px; color: var(--muted); }
     締切
   </a>
 </nav>
+</div>
 
 <dialog class="sheet" id="sheet"><div class="sheet-in" id="sheet-in"></div></dialog>
+
+<!-- アカウントの申請：名前とパスワードから「申請コード」を作り、管理者に送ってもらう -->
+<dialog class="sheet" id="request" aria-labelledby="req-title"><div class="sheet-in">
+  <button class="close" type="button" data-close-request>閉じる</button>
+  <h3 class="sheet-title" id="req-title">アカウントの申請</h3>
+  <form class="dl" id="request-form" novalidate>
+    <label>アカウント名（20文字まで）<input id="req-name" autocomplete="username" autocapitalize="off" maxlength="20" required></label>
+    <label>パスワード（8文字以上）<input id="req-pass" type="password" autocomplete="new-password" required></label>
+    <label>パスワードをもう一度<input id="req-pass2" type="password" autocomplete="new-password" required></label>
+    <p class="form-error" id="req-error" role="alert" hidden></p>
+    <button class="btn" type="submit" id="req-btn">申請コードを作る</button>
+  </form>
+  <div id="req-result" hidden>
+    <p class="gate-lead">この申請コードを、アプリの管理者に送ってください。登録されると、いま決めたアカウント名とパスワードでログインできるようになります。パスワードそのものはコードに入っていません。</p>
+    <textarea class="code-box" id="req-code" readonly rows="4" aria-label="申請コード"></textarea>
+    <button class="btn" type="button" data-copy-code>コピー</button>
+  </div>
+</div></dialog>
 
 <script>
 'use strict';
@@ -1020,14 +1068,173 @@ if ('serviceWorker' in navigator && location.protocol === 'https:' && !inClaude(
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-state.data = store.get('oshi.cache', null);
-buildLivers();
-renderAll();
-renderSyncNote();
-show();
-loadRoster();
-loadData();
-connectSync();
+/* ---------- ログイン ----------
+   accounts.json に「名前・ソルト・パスワードから作った値（ハッシュ）」を並べておく。
+   パスワードそのものはどこにも保存しない。アカウントが1つもないうちは鍵をかけない。 */
+const auth = { accounts: null, session: store.get('oshi.session', null), started: false };
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = (s) => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+const normName = (s) => String(s || '').normalize('NFKC').trim();
+
+async function derive(pass, salt) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 210000 }, key, 256);
+  return b64u(bits);
+}
+
+async function loadAccounts() {
+  try {
+    const res = await fetch(`accounts.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (res.status === 404) return [];
+    if (!res.ok) throw new Error(String(res.status));
+    const d = await res.json();
+    const list = Array.isArray(d.accounts) ? d.accounts.filter((a) => a && a.name && a.salt && a.hash) : [];
+    store.set('oshi.accounts', list);
+    return list;
+  } catch {
+    return store.get('oshi.accounts', null);
+  }
+}
+
+const sessionValid = () => {
+  const s = auth.session;
+  return !!s && (auth.accounts || []).some((a) => normName(a.name) === s.name && a.hash === s.hash);
+};
+
+function lock(message) {
+  $('#app').hidden = true;
+  $('#gate').hidden = false;
+  const err = $('#login-error');
+  err.hidden = !message;
+  err.textContent = message || '';
+}
+
+function unlock() {
+  $('#gate').hidden = true;
+  $('#app').hidden = false;
+  renderAccountBox();
+  if (auth.started) return;
+  auth.started = true;
+  state.data = store.get('oshi.cache', null);
+  buildLivers();
+  renderAll();
+  renderSyncNote();
+  show();
+  loadRoster();
+  loadData();
+  connectSync();
+}
+
+function renderAccountBox() {
+  const box = $('#account-box');
+  if (!box) return;
+  if (inClaude()) { box.innerHTML = ''; return; }
+  const locked = (auth.accounts || []).length > 0;
+  box.innerHTML = locked && auth.session
+    ? `<span>「${esc(auth.session.name)}」でログイン中</span><button class="btn ghost" type="button" data-logout>ログアウト</button><button class="btn ghost" type="button" data-request>アカウントを申請する</button>`
+    : `<span>まだ鍵がかかっていません。アカウントを登録すると、ログインした人だけが使えるようになります。</span><button class="btn ghost" type="button" data-request>アカウントを申請する</button>`;
+}
+
+async function boot() {
+  // Claudeのページとして開いたときは、見られる人をClaude側で決めているので鍵はかけない
+  if (inClaude()) return unlock();
+  auth.accounts = await loadAccounts();
+  if (auth.accounts === null) return lock('ネットにつながっていないため、ログインを確かめられません。電波のある場所で開き直してください。');
+  if (auth.accounts.length === 0 || sessionValid()) return unlock();
+  if (auth.session) {
+    auth.session = null;
+    store.set('oshi.session', null);
+  }
+  lock();
+}
+
+$('#login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = normName($('#login-name').value);
+  const pass = $('#login-pass').value;
+  if (!name || !pass) return lock('アカウント名とパスワードを入れてください。');
+  if (!auth.accounts) return lock('ネットにつながっていないため、ログインを確かめられません。電波のある場所で開き直してください。');
+  const btn = $('#login-btn');
+  btn.disabled = true;
+  btn.textContent = '確認中…';
+  try {
+    const acc = auth.accounts.find((a) => normName(a.name) === name);
+    const hash = acc ? await derive(pass, unb64u(acc.salt)) : null;
+    if (!acc || hash !== acc.hash) return lock('アカウント名かパスワードが違います。');
+    auth.session = { name, hash };
+    store.set('oshi.session', auth.session);
+    $('#login-pass').value = '';
+    unlock();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'ログイン';
+  }
+});
+
+function openRequest() {
+  $('#request-form').hidden = false;
+  $('#req-result').hidden = true;
+  $('#req-error').hidden = true;
+  $('#request-form').reset();
+  const dlg = $('#request');
+  if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+}
+function closeRequest() { const d = $('#request'); if (d.close) d.close(); else d.removeAttribute('open'); }
+
+$('#request-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = normName($('#req-name').value);
+  const pass = $('#req-pass').value;
+  const err = $('#req-error');
+  const fail = (m) => { err.textContent = m; err.hidden = false; };
+  if (!name) return fail('アカウント名を入れてください。');
+  if ([...name].length > 20) return fail('アカウント名は20文字までにしてください。');
+  if (pass.length < 8) return fail('パスワードは8文字以上にしてください。');
+  if (pass !== $('#req-pass2').value) return fail('2つのパスワードが同じになっていません。');
+  if ((auth.accounts || []).some((a) => normName(a.name) === name)) return fail('このアカウント名はもう使われています。別の名前にしてください。');
+  err.hidden = true;
+  const btn = $('#req-btn');
+  btn.disabled = true;
+  btn.textContent = '作成中…';
+  try {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const hash = await derive(pass, salt);
+    $('#req-code').value = JSON.stringify({ name, salt: b64u(salt), hash });
+    $('#request-form').hidden = true;
+    $('#req-result').hidden = false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '申請コードを作る';
+  }
+});
+
+document.addEventListener('click', async (e) => {
+  const t = e.target.closest('[data-request],[data-close-request],[data-copy-code],[data-logout]');
+  if (!t) {
+    if (e.target === $('#request')) closeRequest();
+    return;
+  }
+  if ('request' in t.dataset) return openRequest();
+  if ('closeRequest' in t.dataset) return closeRequest();
+  if ('logout' in t.dataset) {
+    auth.session = null;
+    store.set('oshi.session', null);
+    return lock();
+  }
+  if ('copyCode' in t.dataset) {
+    const box = $('#req-code');
+    try {
+      await navigator.clipboard.writeText(box.value);
+      t.textContent = 'コピーしました';
+    } catch {
+      box.select();
+      t.textContent = '選んだ文字をコピーしてください';
+    }
+    setTimeout(() => { t.textContent = 'コピー'; }, 2500);
+  }
+});
+
+boot();
 </script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // ホーム画面に追加したときのオフライン用。画面のファイルは「まずネット、だめなら保存分」で返す
-const CACHE = 'oshi-time-v3';
+const CACHE = 'oshi-time-v4';
 const SHELL = ['./', './index.html', './livers.json', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
@@ -18,7 +18,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   // data.json はアプリ側で保存しているので、ここでは触らない
-  if (url.pathname.endsWith('/data.json')) return;
+  if (url.pathname.endsWith('/data.json') || url.pathname.endsWith('/accounts.json')) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {
