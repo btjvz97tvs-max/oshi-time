@@ -1,5 +1,5 @@
 // ホーム画面に追加したときのオフライン用。画面のファイルは「まずネット、だめなら保存分」で返す
-const CACHE = 'oshi-time-v4';
+const CACHE = 'oshi-time-v5';
 const SHELL = ['./', './index.html', './livers.json', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {

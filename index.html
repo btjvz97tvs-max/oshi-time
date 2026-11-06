@@ -1069,18 +1069,51 @@ if ('serviceWorker' in navigator && location.protocol === 'https:' && !inClaude(
 }
 
 /* ---------- ログイン ----------
-   accounts.json に「名前・ソルト・パスワードから作った値（ハッシュ）」を並べておく。
-   パスワードそのものはどこにも保存しない。アカウントが1つもないうちは鍵をかけない。 */
+   パスワードは Argon2id（1回ごとに大きなメモリと時間を使う変換）で「鍵」に変え、
+   accounts.json には、その鍵をさらに SHA-256 にかけた「確認用の値（check）」だけを置く。
+   パスワードも鍵も公開されないので、公開された値を書き写してもログインできない。
+   ログインした端末には「鍵」だけを保存する。アカウントが1つもないうちは鍵をかけない。 */
+const KDF = { v: 2, m: 131072, t: 4, p: 1 }; // 128MiB × 4回
 const auth = { accounts: null, session: store.get('oshi.session', null), started: false };
 const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = (s) => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 const normName = (s) => String(s || '').normalize('NFKC').trim();
+const isV2 = (a) => a && a.v === 2 && a.salt && a.check;
 
-async function derive(pass, salt) {
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 210000 }, key, 256);
-  return b64u(bits);
+// Argon2 の部品（vendor/）は、ログインや申請のときだけ読み込む
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`${src} を読み込めませんでした`));
+    document.head.appendChild(s);
+  });
 }
+let argon2Ready = null;
+function ensureArgon2() {
+  if (!argon2Ready) {
+    window.argon2WasmPath = 'vendor/argon2.wasm';
+    window.loadArgon2WasmModule = () => loadScript('vendor/argon2.js');
+    argon2Ready = loadScript('vendor/argon2-browser.js').catch((err) => { argon2Ready = null; throw err; });
+  }
+  return argon2Ready;
+}
+const withTimeout = (promise, ms) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+]);
+
+// パスワード → 鍵（32バイト）。画面が「確認中…」に変わってから重い計算を始める
+async function deriveKey(pass, salt, { m, t, p }) {
+  await ensureArgon2();
+  await new Promise((r) => setTimeout(r, 30));
+  const r = await withTimeout(window.argon2.hash({
+    pass, salt, mem: m, time: t, parallelism: p, hashLen: 32, type: window.argon2.ArgonType.Argon2id,
+  }), 60000);
+  return new Uint8Array(r.hash);
+}
+const checkOf = async (key) => b64u(await crypto.subtle.digest('SHA-256', key));
 
 async function loadAccounts() {
   try {
@@ -1088,7 +1121,7 @@ async function loadAccounts() {
     if (res.status === 404) return [];
     if (!res.ok) throw new Error(String(res.status));
     const d = await res.json();
-    const list = Array.isArray(d.accounts) ? d.accounts.filter((a) => a && a.name && a.salt && a.hash) : [];
+    const list = Array.isArray(d.accounts) ? d.accounts.filter((a) => a && a.name) : [];
     store.set('oshi.accounts', list);
     return list;
   } catch {
@@ -1096,10 +1129,17 @@ async function loadAccounts() {
   }
 }
 
-const sessionValid = () => {
+async function sessionValid() {
   const s = auth.session;
-  return !!s && (auth.accounts || []).some((a) => normName(a.name) === s.name && a.hash === s.hash);
-};
+  if (!s || !s.key) return false;
+  const acc = (auth.accounts || []).find((a) => isV2(a) && normName(a.name) === s.name);
+  if (!acc) return false;
+  try {
+    return (await checkOf(unb64u(s.key))) === acc.check;
+  } catch {
+    return false;
+  }
+}
 
 function lock(message) {
   $('#app').hidden = true;
@@ -1140,7 +1180,7 @@ async function boot() {
   if (inClaude()) return unlock();
   auth.accounts = await loadAccounts();
   if (auth.accounts === null) return lock('ネットにつながっていないため、ログインを確かめられません。電波のある場所で開き直してください。');
-  if (auth.accounts.length === 0 || sessionValid()) return unlock();
+  if (auth.accounts.length === 0 || (await sessionValid())) return unlock();
   if (auth.session) {
     auth.session = null;
     store.set('oshi.session', null);
@@ -1156,15 +1196,22 @@ $('#login-form').addEventListener('submit', async (e) => {
   if (!auth.accounts) return lock('ネットにつながっていないため、ログインを確かめられません。電波のある場所で開き直してください。');
   const btn = $('#login-btn');
   btn.disabled = true;
-  btn.textContent = '確認中…';
+  btn.textContent = '確認中…（数秒かかります）';
   try {
     const acc = auth.accounts.find((a) => normName(a.name) === name);
-    const hash = acc ? await derive(pass, unb64u(acc.salt)) : null;
-    if (!acc || hash !== acc.hash) return lock('アカウント名かパスワードが違います。');
-    auth.session = { name, hash };
+    if (acc && !isV2(acc)) {
+      return lock('ログインの仕組みを新しくしたため、このアカウントはもう一度申請が必要です。下の「アカウントを申請する」から作り直して、管理者に送ってください。');
+    }
+    // 名前が違うときも同じだけ時間をかけて、名前があるかどうかを分かりにくくする
+    const salt = acc ? unb64u(acc.salt) : crypto.getRandomValues(new Uint8Array(16));
+    const key = await deriveKey(pass, salt, acc ? { m: acc.m, t: acc.t, p: acc.p } : KDF);
+    if (!acc || (await checkOf(key)) !== acc.check) return lock('アカウント名かパスワードが違います。');
+    auth.session = { name, key: b64u(key) };
     store.set('oshi.session', auth.session);
     $('#login-pass').value = '';
     unlock();
+  } catch {
+    lock('ログインの確認がうまくいきませんでした。電波のある場所で、もう一度試してください。');
   } finally {
     btn.disabled = false;
     btn.textContent = 'ログイン';
@@ -1191,17 +1238,19 @@ $('#request-form').addEventListener('submit', async (e) => {
   if ([...name].length > 20) return fail('アカウント名は20文字までにしてください。');
   if (pass.length < 8) return fail('パスワードは8文字以上にしてください。');
   if (pass !== $('#req-pass2').value) return fail('2つのパスワードが同じになっていません。');
-  if ((auth.accounts || []).some((a) => normName(a.name) === name)) return fail('このアカウント名はもう使われています。別の名前にしてください。');
+  if ((auth.accounts || []).some((a) => isV2(a) && normName(a.name) === name)) return fail('このアカウント名はもう使われています。別の名前にしてください。');
   err.hidden = true;
   const btn = $('#req-btn');
   btn.disabled = true;
-  btn.textContent = '作成中…';
+  btn.textContent = '作成中…（数秒かかります）';
   try {
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const hash = await derive(pass, salt);
-    $('#req-code').value = JSON.stringify({ name, salt: b64u(salt), hash });
+    const key = await deriveKey(pass, salt, KDF);
+    $('#req-code').value = JSON.stringify({ name, v: KDF.v, m: KDF.m, t: KDF.t, p: KDF.p, salt: b64u(salt), check: await checkOf(key) });
     $('#request-form').hidden = true;
     $('#req-result').hidden = false;
+  } catch {
+    fail('申請コードを作れませんでした。電波のある場所で、もう一度試してください。');
   } finally {
     btn.disabled = false;
     btn.textContent = '申請コードを作る';
