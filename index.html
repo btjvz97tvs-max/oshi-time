@@ -278,6 +278,7 @@ footer.credit { margin: 36px 0 0; font-size: 12px; color: var(--muted); }
 .gate-lead { margin: 0; font-size: 14px; color: var(--muted); }
 .form-error { margin: 0; font-size: 13px; font-weight: 700; color: var(--live); }
 .sheet-title { margin: 0 0 4px; font: 800 20px/1.3 var(--round); }
+.code-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .code-box {
   display: block; width: 100%; margin: 12px 0; padding: 10px 12px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink);
@@ -380,7 +381,11 @@ footer.credit { margin: 36px 0 0; font-size: 12px; color: var(--muted); }
   <div id="req-result" hidden>
     <p class="gate-lead">この申請コードを、アプリの管理者に送ってください。コードにはアカウント名もパスワードも入っていないので、だれのコードか分かるように、送るときに名前も伝えてください。登録されると、いま決めたアカウント名とパスワードでログインできるようになります。どちらかを忘れると申請し直しになるので、両方とも控えておいてください。</p>
     <textarea class="code-box" id="req-code" readonly rows="4" aria-label="申請コード"></textarea>
-    <button class="btn" type="button" data-copy-code>コピー</button>
+    <div class="code-actions">
+      <button class="btn" type="button" data-copy-code>コピー</button>
+      <button class="btn ghost" type="button" data-share-code hidden>送る（LINEなど）</button>
+    </div>
+    <p class="note" id="req-copy-hint" hidden>うまくコピーできないときは、上のコードを長押しして「すべてを選択」→「コピー」を選ぶか、「送る」から直接送ってください。</p>
   </div>
 </div></dialog>
 
@@ -1323,7 +1328,7 @@ $('#request-form').addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-request],[data-close-request],[data-copy-code],[data-logout]');
+  const t = e.target.closest('[data-request],[data-close-request],[data-copy-code],[data-share-code],[data-logout]');
   if (!t) {
     if (e.target === $('#request')) closeRequest();
     return;
@@ -1339,17 +1344,36 @@ document.addEventListener('click', async (e) => {
     return lock();
   }
   if ('copyCode' in t.dataset) {
+    // iPhone の Safari でも確実にコピーできるよう、まず「選んでコピー」をタップの中ですぐ行い、
+    // だめなときだけ新しいやり方（Clipboard API）を試す
     const box = $('#req-code');
+    const text = box.value;
+    let ok = false;
     try {
-      await navigator.clipboard.writeText(box.value);
-      t.textContent = 'コピーしました';
-    } catch {
+      box.focus();
       box.select();
-      t.textContent = '選んだ文字をコピーしてください';
+      box.setSelectionRange(0, text.length);
+      ok = document.execCommand('copy');
+    } catch {}
+    if (!ok && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } catch {}
     }
+    box.blur();
+    t.textContent = ok ? 'コピーしました' : 'コピーできませんでした';
+    $('#req-copy-hint').hidden = ok;
     setTimeout(() => { t.textContent = 'コピー'; }, 2500);
   }
+  if ('shareCode' in t.dataset) {
+    try {
+      await navigator.share({ text: $('#req-code').value });
+    } catch {}
+  }
 });
+// 共有シート（LINE などに直接送れる）が使える端末だけ「送る」ボタンを出す
+$('[data-share-code]').hidden = !navigator.share;
 
 boot();
 </script>
