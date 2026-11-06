@@ -10,7 +10,7 @@ GitHub Pages で動かし、iPhone のホーム画面に追加して使います
 - **締切**：申込期限などを登録すると、3日前からホームの「今日やること」に表示。iPhoneのカレンダーにも追加できる（前日と3時間前に通知）
 
 にじさんじ全員（ID・KR出身、NIJISANJI EN を含む200人、2026年11月時点）の名簿を `livers.json` に入れてあるので、推しの検索と登録は設定なしですぐ使えます。
-配信データは15分ごとに GitHub Actions が [Holodex](https://holodex.net) から自動で集めます。名簿にいない新人も、Holodex に載れば自動で検索に出てきます。
+配信データは5分ごとに GitHub Actions が [Holodex](https://holodex.net) から自動で集めます。名簿にいない新人も、Holodex に載れば自動で検索に出てきます。
 推し登録と締切はその端末の中だけに保存されます。
 
 ## はじめかた
@@ -36,7 +36,7 @@ GitHub Pages で動かし、iPhone のホーム画面に追加して使います
 | `accounts.json` | アプリを使えるアカウントの一覧（申請コードを並べる） |
 | `livers.json` | ライバー名簿。1行1人で、`n` 名前 / `k` よみ / `e` 英語表記 / `g` 期・ユニット / `yt` YouTubeチャンネルID / `yh` YouTubeハンドル（@の後ろ） / `a` 別名 |
 | `scripts/fetch-data.mjs` | Holodex から全員分のデータを集めて `data.json` を作る |
-| `.github/workflows/update.yml` | 15分ごとに上のスクリプトを動かしてサイトを公開し直す |
+| `.github/workflows/update.yml` | 5分ごとに上のスクリプトを動かしてサイトを公開し直す |
 | `sw.js` / `manifest.webmanifest` / `icon-*.png` | ホーム画面に追加したとき用 |
 
 ## アカウント（使える人を決める）

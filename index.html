@@ -818,7 +818,7 @@ function renderHome() {
     // 配信データがないときは、推しごとにYouTubeの「ライブ」「動画」タブへ1タップで飛べる一覧を出す
     if (!noFav) parts.push(channelList());
     if (state.data?.error === 'no-key') {
-      parts.push(`<p class="note">配信予定と新着をここに並べるには、GitHub の Settings → Secrets and variables → Actions に <b>HOLODEX_API_KEY</b> を登録してください。15分ごとに更新されるようになります。</p>`);
+      parts.push(`<p class="note">配信予定と新着をここに並べるには、GitHub の Settings → Secrets and variables → Actions に <b>HOLODEX_API_KEY</b> を登録してください。5分ごとに更新されるようになります。</p>`);
     } else if (!state.data && !state.noSource) {
       parts.push(`<p class="note">配信データを読み込めませんでした。電波のある場所で開き直してください。</p>`);
     }
@@ -1061,7 +1061,7 @@ $('#dl-form').addEventListener('submit', (e) => {
 
 window.addEventListener('hashchange', show);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !state.noSource) loadData(); });
-setInterval(() => { if (document.visibilityState === 'visible' && !state.noSource) loadData(); }, 5 * 60e3);
+setInterval(() => { if (document.visibilityState === 'visible' && !state.noSource) loadData(); }, 60e3); // 開いているあいだは1分ごとに新しいデータを確かめる
 setInterval(() => { if (document.visibilityState === 'visible') renderHome(); }, 60e3);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !inClaude()) {
