@@ -54,7 +54,7 @@ function toLiver(c) {
     en: c.english_name || '',
     photo: c.photo || '',
     x: c.twitter || '',
-    group: cleanGroup(c.suborg),
+    group: cleanGroup(c.suborg || c.group),
     subs: Number(c.subscriber_count) || 0,
   };
 }
@@ -97,17 +97,18 @@ async function main() {
     200
   );
 
+  // VirtuaReal（中国のプロジェクト）は Holodex では同じ組織に入っているが、ここでは外す
+  const isVirtuaReal = (c) =>
+    /virtuareal/i.test(`${c.group || ''} ${c.suborg || ''} ${c.name || ''} ${c.english_name || ''}`);
   const livers = new Map();
-  for (const c of channels) if (!c.inactive) livers.set(c.id, toLiver(c));
-  // 一覧に無いチャンネル（公式チャンネルなど）の動画も、名前と写真だけ拾っておく
-  for (const v of [...live, ...recent]) {
-    const c = v.channel;
-    if (c?.id && !livers.has(c.id)) livers.set(c.id, toLiver(c));
-  }
+  for (const c of channels) if (!c.inactive && !isVirtuaReal(c)) livers.set(c.id, toLiver(c));
 
+  // にじさんじのチャンネルの動画だけを入れる（他の事務所のコラボ配信などは入れない）
   const videos = new Map();
   for (const v of [...live, ...recent]) {
     if (v.status === 'missing') continue;
+    const ch = v.channel?.id || v.channel_id;
+    if (!livers.has(ch)) continue;
     if (!videos.has(v.id)) videos.set(v.id, toVideo(v));
   }
 
