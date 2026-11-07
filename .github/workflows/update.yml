@@ -84,8 +84,8 @@ jobs:
         run: |
           now=$(date +%s)
           started=${STARTED:-$now}
-          # 次の回が動き出すまでの待ち時間（30秒ほど）を見込んで、この回の開始から5分後に始まるようにする
-          wait=$(( started + 300 - 30 - now ))
+          # 次の回が動き出すまでの待ち時間（10秒ほど）を見込んで、この回の開始から5分後に始まるようにする
+          wait=$(( started + 300 - 10 - now ))
           if [ "$wait" -gt 0 ]; then
             echo "${wait}秒待ってから次の回を予約します"
             sleep "$wait"
